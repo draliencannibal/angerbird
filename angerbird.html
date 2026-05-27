@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>anger bird</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            overflow: hidden;
+            background: black;
+            font-family: Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            background: #1c1c1c;
+        }
+
+        /* DOM bird so GIF actually animates properly */
+        #birdDom {
+            position: absolute;
+            width: 70px;
+            height: 70px;
+            pointer-events: none;
+            z-index: 10;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="game"></canvas>
+    <img id="birdDom" src="fadedangerbird.gif" />
+
+    <script>
+        const canvas = document.getElementById("game");
+        const ctx = canvas.getContext("2d");
+        const birdDom = document.getElementById("birdDom");
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        resize();
+        window.addEventListener("resize", resize);
+
+        const pillarTopImg = new Image();
+        pillarTopImg.src = "pillar.png";
+
+        const pillarBottomImg = new Image();
+        pillarBottomImg.src = "pillar1.png";
+
+        const lifeImg = new Image();
+        lifeImg.src = "life.png";
+
+        const titleImg = new Image();
+        titleImg.src = "title.png";
+
+        const game_state = {
+            title: "title",
+            playing: "playing",
+            dead: "dead"
+        };
+
+        let state = game_state.title;
+
+        const gravity = 0.45;
+        const jumpForce = -8;
+        const pipeGap = 230;
+        const pipeWidth = 120;
+        const pipeSpeed = 4;
+
+        let score = 0;
+        let lives = 1;
+
+        const bird = {
+            x: 140,
+            y: 300,
+            height: 70,
+            width: 70,
+            velocity: 0,
+            rotation: 0
+        };
+
+        let pipes = [];
+
+        function resetGame() {
+            score = 0;
+            lives = 1;
+
+            bird.y = canvas.height / 2;
+            bird.velocity = 0;
+            bird.rotation = 0;
+
+            pipes = [];
+            spawnPipe();
+            state = game_state.playing;
+
+            birdDom.style.display = "block";
+        }
+
+        function spawnPipe() {
+            const minHeight = 120;
+            const maxHeight = canvas.height - pipeGap - 120;
+
+            const topHeight = Math.random() * (maxHeight - minHeight) + minHeight;
+
+            pipes.push({
+                x: canvas.width + 100,
+                topHeight,
+                bottomY: topHeight + pipeGap,
+                passed: false
+            });
+        }
+
+        function flap() {
+            if (state === game_state.title) {
+                resetGame();
+            } else if (state === game_state.playing) {
+                bird.velocity = jumpForce;
+            }
+        }
+
+        function die() {
+            state = game_state.dead;
+            birdDom.style.display = "none";
+        }
+
+        function update() {
+            if (state !== game_state.playing) return;
+
+            bird.velocity += gravity;
+            bird.y += bird.velocity;
+
+            bird.rotation = Math.min(bird.velocity * 3, 90);
+
+            if (bird.y + bird.height >= canvas.height || bird.y <= 0) {
+                die();
+            }
+
+            pipes.forEach(pipe => {
+                pipe.x -= pipeSpeed;
+
+                if (!pipe.passed && pipe.x + pipeWidth < bird.x) {
+                    pipe.passed = true;
+                    score++;
+                }
+
+                const hitTop =
+                    bird.x < pipe.x + pipeWidth &&
+                    bird.x + bird.width > pipe.x &&
+                    bird.y < pipe.topHeight;
+
+                const hitBottom =
+                    bird.x < pipe.x + pipeWidth &&
+                    bird.x + bird.width > pipe.x &&
+                    bird.y + bird.height > pipe.bottomY;
+
+                if (hitTop || hitBottom) die();
+            });
+
+            pipes = pipes.filter(p => p.x + pipeWidth > -50);
+
+            if (pipes.length === 0 || pipes[pipes.length - 1].x < canvas.width - 340) {
+                spawnPipe();
+            }
+
+            // sync DOM bird position
+            if (state === game_state.playing) {
+                birdDom.style.left = (bird.x) + "px";
+                birdDom.style.top = (bird.y) + "px";
+                birdDom.style.transform = `rotate(${bird.rotation}deg)`;
+            }
+        }
+
+        function drawTitleScreen() {
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const imgWidth = canvas.width * 0.9;
+            const imgHeight = imgWidth * 0.35;
+
+            ctx.drawImage(
+                titleImg,
+                canvas.width / 2 - imgWidth / 2,
+                canvas.height / 2 - imgHeight / 2 - 80,
+                imgWidth,
+                imgHeight
+            );
+
+            ctx.fillStyle = "white";
+            ctx.font = "bold 42px Arial";
+            ctx.textAlign = "center";
+
+            ctx.fillText("click / tap / space", canvas.width / 2, canvas.height - 160);
+        }
+
+        function drawGame() {
+            ctx.fillStyle = "#202020";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            pipes.forEach(pipe => {
+                ctx.drawImage(pillarTopImg, pipe.x, 0, pipeWidth, pipe.topHeight);
+                ctx.drawImage(pillarBottomImg, pipe.x, pipe.bottomY, pipeWidth, canvas.height - pipe.bottomY);
+            });
+
+            ctx.drawImage(lifeImg, 20, 20, 60, 60);
+
+            ctx.fillStyle = "white";
+            ctx.font = "bold 48px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText(score, canvas.width / 2, 70);
+        }
+
+        function drawDeathScreen() {
+            drawGame();
+
+            ctx.fillStyle = "rgba(0,0,0,0.75)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = "white";
+            ctx.textAlign = "center";
+
+            ctx.font = "bold 72px Arial";
+            ctx.fillText("anger bird faded </3", canvas.width / 2, 180);
+
+            ctx.font = "bold 42px Arial";
+            ctx.fillText(`score: ${score}`, canvas.width / 2, 260);
+
+            const buttonWidth = 420;
+            const buttonHeight = 90;
+            const x = canvas.width / 2 - buttonWidth / 2;
+
+            window.deathButtons = {
+                giveUp: { x, y: 360, w: buttonWidth, h: buttonHeight },
+                restart: { x, y: 490, w: buttonWidth, h: buttonHeight }
+            };
+
+            ctx.fillStyle = "#5c1010";
+            ctx.fillRect(x, 360, buttonWidth, buttonHeight);
+
+            ctx.fillStyle = "#101d08";
+            ctx.fillRect(x, 490, buttonWidth, buttonHeight);
+
+            ctx.fillStyle = "white";
+            ctx.font = "bold 32px Arial";
+
+            ctx.fillText("w//z trading", canvas.width / 2, 420);
+            ctx.fillText("embrace faded anger bird", canvas.width / 2, 550);
+        }
+
+        function draw() {
+            if (state === game_state.title) drawTitleScreen();
+            else if (state === game_state.playing) drawGame();
+            else drawDeathScreen();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+
+        function handleInput() {
+            if (state === game_state.dead) return;
+            flap();
+        }
+
+        window.addEventListener("keydown", e => {
+            if (e.code === "Space") {
+                e.preventDefault();
+                handleInput();
+            }
+        });
+
+        canvas.addEventListener("mousedown", e => {
+            if (state === game_state.dead) handleDeathButtons(e.clientX, e.clientY);
+            else handleInput();
+        });
+
+        canvas.addEventListener("touchstart", e => {
+            const t = e.touches[0];
+            if (state === game_state.dead) handleDeathButtons(t.clientX, t.clientY);
+            else handleInput();
+        });
+
+        function handleDeathButtons(x, y) {
+            const b = window.deathButtons;
+            if (!b) return;
+
+            const inside = btn => x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h;
+
+            if (inside(b.giveUp)) state = game_state.title;
+            if (inside(b.restart)) resetGame();
+        }
+    </script>
+</body>
+</html>
